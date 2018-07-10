@@ -329,7 +329,7 @@ class Exported:
         self.rootpath = rootpath
         self.origrepo = origrepo
         self.target_distdir = origrepo.join("dist")
-        python = py.path.local.sysfind("python")
+        python = sys.executable
         if not python:
             raise ValueError("could not find 'python' executable")
         self.python = str(python)

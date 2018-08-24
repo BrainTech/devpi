@@ -145,7 +145,8 @@ def confirm_delete(hub, index_url, reply, req):
             vv = ViewLinkStore(basepath, verdata)
             files_to_delete = [link for link in vv.get_links()
                                if link.href.startswith(index_url.url)]
-            ver_to_delete.append((version, files_to_delete))
+            if files_to_delete:
+                ver_to_delete.append((version, files_to_delete))
     if ver_to_delete:
         hub.info("About to remove the following releases and distributions")
         for ver, links in ver_to_delete:

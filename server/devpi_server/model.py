@@ -1,16 +1,19 @@
 from __future__ import unicode_literals
-import posixpath
-import sys
-import py
-import re
+
 import json
-from devpi_common.metadata import get_latest_version
+import posixpath
+import re
+import sys
+from time import gmtime
+
+import py
 from devpi_common.metadata import CompareMixin
+from devpi_common.metadata import get_latest_version
 from devpi_common.metadata import splitbasename, parse_version
+from devpi_common.types import ensure_unicode, cached_property, parse_hash_spec
 from devpi_common.url import URL
 from devpi_common.validation import validate_metadata, normalize_name
-from devpi_common.types import ensure_unicode, cached_property, parse_hash_spec
-from time import gmtime
+
 from .auth import hash_password, verify_and_update_password_hash
 from .filestore import FileEntry
 from .log import threadlog, thread_current_log
@@ -59,6 +62,7 @@ def get_ixconfigattrs(hooks, index_type):
 
 class ModelException(Exception):
     """ Base Exception. """
+
     def __init__(self, msg, *args):
         if args:
             msg = msg % args
@@ -97,6 +101,7 @@ class NonVolatile(ModelException):
 
 class RootModel:
     """ per-process root model object. """
+
     def __init__(self, xom):
         self.xom = xom
         self.keyfs = xom.keyfs
@@ -254,7 +259,7 @@ class User:
             userconfig.setdefault("indexes", {})
         userlist.add(username)
         model.keyfs.USERLIST.set(userlist)
-        threadlog.info("created user %r with email %r" %(username, email))
+        threadlog.info("created user %r with email %r" % (username, email))
         return user
 
     def _set(self, newuserconfig):
@@ -392,7 +397,7 @@ class BaseStage(object):
 
     def key_projsimplelinks(self, project):
         return self.keyfs.PROJSIMPLELINKS(user=self.username,
-            index=self.index, project=normalize_name(project))
+                                          index=self.index, project=normalize_name(project))
 
     def get_releaselinks(self, project):
         # compatibility access method used by devpi-web and tests
@@ -429,9 +434,9 @@ class BaseStage(object):
         assert isinstance(toxresultdata, dict), toxresultdata
         linkstore = self.get_linkstore_perstage(link.project, link.version, readonly=False)
         return linkstore.new_reflink(
-                rel="toxresult",
-                file_content=json.dumps(toxresultdata).encode("utf-8"),
-                for_entrypath=link)
+            rel="toxresult",
+            file_content=json.dumps(toxresultdata).encode("utf-8"),
+            for_entrypath=link)
 
     def get_toxresults(self, link):
         l = []
@@ -478,14 +483,14 @@ class BaseStage(object):
         all_links = []
         seen = set()
         for stage, res in self.op_sro_check_mirror_whitelist(
-            "get_simplelinks_perstage", project=project):
+                "get_simplelinks_perstage", project=project):
             for key, href in res:
                 if key not in seen:
                     seen.add(key)
                     all_links.append((key, href))
         if sorted_links:
-           all_links = [(v.key, v.href)
-                        for v in sorted(map(SimplelinkMeta, all_links), reverse=True)]
+            all_links = [(v.key, v.href)
+                         for v in sorted(map(SimplelinkMeta, all_links), reverse=True)]
         return all_links
 
     def get_mirror_whitelist_info(self, project):
@@ -493,6 +498,10 @@ class BaseStage(object):
         private_hit = whitelisted = False
         for stage in self.sro():
             in_index = stage.has_project_perstage(project)
+            if private_hit and not whitelisted and in_index:
+                return dict(
+                    has_mirror_base=True,
+                    blocked_by_mirror_whitelist=stage.name)
             if stage.ixconfig["type"] == "mirror":
                 has_mirror_base = in_index and (not private_hit or whitelisted)
                 blocked_by_mirror_whitelist = in_index and private_hit and not whitelisted
@@ -523,6 +532,8 @@ class BaseStage(object):
         project = normalize_name(kw["project"])
         whitelisted = private_hit = False
         for stage in self.sro():
+            if private_hit and not whitelisted:
+                return
             if stage.ixconfig["type"] == "mirror":
                 if private_hit:
                     if not whitelisted:
@@ -574,7 +585,6 @@ class BaseStage(object):
 
 
 class PrivateStage(BaseStage):
-
     metadata_keys = (
         'name', 'version',
         # additional meta-data
@@ -636,7 +646,6 @@ class PrivateStage(BaseStage):
                 return False
             del indexes[self.index]
 
-
     #
     # registering project and version metadata
     #
@@ -649,7 +658,7 @@ class PrivateStage(BaseStage):
 
     def key_projversions(self, project):
         return self.keyfs.PROJVERSIONS(user=self.username,
-            index=self.index, project=normalize_name(project))
+                                       index=self.index, project=normalize_name(project))
 
     def key_projversion(self, project, version):
         return self.keyfs.PROJVERSION(
@@ -751,10 +760,10 @@ class PrivateStage(BaseStage):
                 raise MissesRegistration("%s-%s", project, version)
         linkstore = self.get_linkstore_perstage(project, version, readonly=False)
         link = linkstore.create_linked_entry(
-                rel="releasefile",
-                basename=filename,
-                file_content=content,
-                last_modified=last_modified)
+            rel="releasefile",
+            basename=filename,
+            file_content=content,
+            last_modified=last_modified)
         self._regen_simplelinks(project)
         return link
 
@@ -775,9 +784,9 @@ class PrivateStage(BaseStage):
             self.set_versiondata({'name': project, 'version': version})
         linkstore = self.get_linkstore_perstage(project, version, readonly=False)
         link = linkstore.create_linked_entry(
-                rel="doczip",
-                basename=basename,
-                file_content=content,
+            rel="doczip",
+            basename=basename,
+            file_content=content,
         )
         return link
 
@@ -801,13 +810,14 @@ class PrivateStage(BaseStage):
 
 class ELink(object):
     """ model Link using entrypathes for referencing. """
+
     def __init__(self, filestore, linkdict, project, version):
         self.filestore = filestore
         self.linkdict = linkdict
         self.basename = posixpath.basename(self.entrypath)
         self.project = project
         self.version = version
-        if sys.version_info < (3,0):
+        if sys.version_info < (3, 0):
             for key in linkdict:
                 assert py.builtin._istext(key)
 
@@ -850,7 +860,7 @@ class ELink(object):
 
     def add_log(self, what, who, **kw):
         d = {"what": what, "who": who, "when": gmtime()[:6]}
-        if sys.version_info < (3,0):
+        if sys.version_info < (3, 0):
             # make sure keys are unicode as they are on py3
             kw = dict((py.builtin.text(name), value) for name, value in kw.items())
         d.update(kw)
@@ -902,10 +912,10 @@ class LinkStore:
         if isinstance(for_entrypath, ELink):
             for_entrypath = for_entrypath.entrypath
         links = self.get_links(entrypath=for_entrypath)
-        assert len(links) == 1, "need exactly one reference, got %s" %(links,)
+        assert len(links) == 1, "need exactly one reference, got %s" % (links,)
         base_entry = links[0].entry
         other_reflinks = self.get_links(rel=rel, for_entrypath=for_entrypath)
-        filename = "%s.%s%d" %(base_entry.basename, rel, len(other_reflinks))
+        filename = "%s.%s%d" % (base_entry.basename, rel, len(other_reflinks))
         entry = self._create_file_entry(filename, file_content,
                                         ref_hash_spec=base_entry.hash_spec)
         return self._add_link_to_file_entry(rel, entry, for_entrypath=for_entrypath)
@@ -929,20 +939,22 @@ class LinkStore:
                   for_entrypath=None):
         if isinstance(for_entrypath, ELink):
             for_entrypath = for_entrypath.entrypath
+
         def fil(link):
-            return (not rel or rel==link.rel) and \
-                   (not basename or basename==link.basename) and \
-                   (not entrypath or entrypath==link.entrypath) and \
-                   (not for_entrypath or for_entrypath==link.for_entrypath)
+            return (not rel or rel == link.rel) and \
+                   (not basename or basename == link.basename) and \
+                   (not entrypath or entrypath == link.entrypath) and \
+                   (not for_entrypath or for_entrypath == link.for_entrypath)
+
         return list(filter(fil, [ELink(self.filestore, linkdict, self.project, self.version)
-                           for linkdict in self.verdata.get("+elinks", [])]))
+                                 for linkdict in self.verdata.get("+elinks", [])]))
 
     def _create_file_entry(self, basename, file_content, ref_hash_spec=None):
         entry = self.filestore.store(
-                    user=self.stage.username, index=self.stage.index,
-                    basename=basename,
-                    file_content=file_content,
-                    dir_hash_spec=ref_hash_spec)
+            user=self.stage.username, index=self.stage.index,
+            basename=basename,
+            file_content=file_content,
+            dir_hash_spec=ref_hash_spec)
         entry.project = self.project
         entry.version = self.version
         return entry
@@ -970,6 +982,7 @@ class LinkStore:
 
 class SimplelinkMeta(CompareMixin):
     """ helper class to provide information for items from get_simplelinks() """
+
     def __init__(self, key_href):
         self.key, self.href = key_href
         self._url = URL(self.href)
@@ -1013,7 +1026,7 @@ def normalize_bases(model, bases):
             messages.append("invalid base index spec: %r" % (base,))
         else:
             if stage_base is None:
-                messages.append("base index %r does not exist" %(base,))
+                messages.append("base index %r does not exist" % (base,))
             else:
                 newbases.append(stage_base.name)
     if messages:
@@ -1047,6 +1060,7 @@ def add_keys(xom, keyfs):
 
 class EventSubscribers:
     """ the 'on_' functions are called within in the notifier thread. """
+
     def __init__(self, xom):
         self.xom = xom
 
